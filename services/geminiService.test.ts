@@ -19,7 +19,7 @@ describe("Gemini proxy client", () => {
       "https://example.com/api/gemini/generateContent",
     ],
     ["/api", "/api/gemini/generateContent"],
-    [undefined, "http://localhost:3001/api/gemini/generateContent"],
+    [undefined, "/api/gemini/generateContent"],
   ])("builds one API prefix from %s", (baseUrl, expected) => {
     expect(buildGenerateContentUrl(baseUrl)).toBe(expected);
   });

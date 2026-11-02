@@ -70,14 +70,11 @@ interface GenerateContentResponse {
   response: unknown;
 }
 
-// The configured base is the API root. A relative value uses the same origin.
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? "http://localhost:3001/api" : "/api");
+// The API is always served from the same origin (Vite proxy in dev).
+const API_BASE_URL = "/api";
 
-export const buildGenerateContentUrl = (
-  apiBaseUrl = "http://localhost:3001/api"
-): string => `${apiBaseUrl.replace(/\/$/, "")}/gemini/generateContent`;
+export const buildGenerateContentUrl = (apiBaseUrl = API_BASE_URL): string =>
+  `${apiBaseUrl.replace(/\/$/, "")}/gemini/generateContent`;
 
 /**
  * Generate content using Gemini API via secure backend proxy
@@ -537,7 +534,7 @@ export const extractTravelDataFromFile = async (
       ) => { update: (data: unknown) => void; end: () => void };
     }) => {
       try {
-        const model = "gemini-3.1-flash-lite";
+        const model = "gemini-3.5-flash-lite";
         let contents;
         let rawTextForFallback = "";
 
