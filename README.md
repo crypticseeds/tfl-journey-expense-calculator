@@ -70,21 +70,21 @@ _Langfuse trace revealing document processing bottlenecks, leading to 78.5% late
 ### Enterprise Security
 
 - **Zero client-side API key exposure** via secure backend proxy
-- **CORS protection** and rate limiting
-- **Production-ready architecture** with environment-based configuration
+- **Single-origin serving**: the frontend and API share one origin, so no CORS surface
+- **Rate limiting** per client IP
+- **Production-ready architecture** with environment-based configuration and a container image
 
 ## 🛠️ Tech Stack
 
 **Frontend**: React 19, TypeScript, Vite, PDF.js, Tesseract.js  
 **Backend**: Node.js, Express, Google Gemini AI, Langfuse, OpenTelemetry  
-**DevOps**: pnpm, Doppler, Concurrently
+**DevOps**: pnpm, Doppler, Docker Compose, GitHub Actions, Playwright, Dependabot
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js (v18+)
-- pnpm (or npm)
+- Node.js 22 (see `.node-version`) and pnpm (version pinned in `package.json`)
 - Google Gemini API key ([Get one free](https://aistudio.google.com/app/apikey))
 
 ### Installation
@@ -99,18 +99,24 @@ _Langfuse trace revealing document processing bottlenecks, leading to 78.5% late
 
 2. **Configure secrets with Doppler**:
 
-   Run `doppler setup`, then configure `GEMINI_API_KEY` and the optional
-   Langfuse keys in the selected Doppler project and config.
+   Set `GEMINI_API_KEY` (and the optional `LANGFUSE_*` keys) in the Doppler
+   project `tfl`, config `dev`.
 
 3. **Run the application**:
 
    ```bash
-   pnpm run dev:all
+   pnpm dev
    ```
 
    The app will be available at:
-   - 🎨 Frontend: `http://localhost:3000`
-   - 🔒 Backend API: `http://localhost:3001`
+   - 🎨 Frontend (Vite): `http://localhost:3000`
+   - 🔒 Backend API: `http://localhost:3001` (Vite proxies `/api` to it)
+
+   No Doppler? Pass the key directly:
+
+   ```bash
+   GEMINI_API_KEY=your-key pnpm exec concurrently "node server/index.js" "vite"
+   ```
 
 That's it! 🎉
 
@@ -123,7 +129,7 @@ The project includes sample TfL statements in the `/sample` folder:
 
 **Quick walkthrough**:
 
-1. Open `http://localhost:3000`
+1. Open `http://localhost:3000` (`http://localhost:8080` when running the production build or Docker)
 2. Click "Upload Files" and select the sample files
 3. Select some dates in October 2025 on the calendar
 4. Click "Calculate Expenses"
@@ -133,21 +139,63 @@ Check the Langfuse dashboard (if configured) to see the full AI trace!
 
 ## 📖 Detailed Setup Options
 
-### Using Doppler (Production Secret Management)
+### Production without Docker
 
-Doppler provides secure, centralized secret management:
+Build the frontend and serve it together with the API from one process:
 
 ```bash
-# Install Doppler CLI
-brew install doppler  # or see https://docs.doppler.com/docs/install-cli
-
-# Login and setup
-doppler login
-doppler setup
-
-# Run with Doppler
-doppler run -- pnpm run dev
+pnpm build && GEMINI_API_KEY=your-key pnpm start
 ```
+
+Open `http://localhost:8080` (set `PORT` to change it).
+
+### Docker
+
+The container serves the frontend and API on port 8080 and restarts automatically (`restart: unless-stopped`), so it comes back after a reboot.
+
+**With Doppler** (project `tfl`, config `prd`):
+
+```bash
+doppler run --project tfl --config prd -- docker compose up -d --build
+```
+
+**With a `.env` file**:
+
+```bash
+cp .env.example .env   # then fill in GEMINI_API_KEY
+docker compose up -d --build
+```
+
+Open `http://localhost:8080`. Stop it with `docker compose down`.
+
+### Configuration
+
+| Variable                                                            | Default     | Purpose                                                                                                                                          |
+| ------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GEMINI_API_KEY`                                                    | required    | Google Gemini API key                                                                                                                            |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL` | unset       | Optional Langfuse tracing. The browser posts traces to `/api/langfuse/traces`; the server adds the keys, so the secret never reaches the browser |
+| `TRUST_PROXY_HOPS`                                                  | `0`         | Number of reverse proxies in front of the app                                                                                                    |
+| `HOST_PORT`                                                         | `8080`      | Host port the container is published on                                                                                                          |
+| `BIND_ADDRESS`                                                      | `127.0.0.1` | `127.0.0.1` is this machine only; `0.0.0.0` exposes it to your network                                                                           |
+
+> ⚠️ With `BIND_ADDRESS=0.0.0.0`, anyone who can reach the app can spend your Gemini quota. Only do this on a trusted network or behind authentication.
+
+Docker and `pnpm start` serve everything from one origin, so there is no CORS or API base URL to configure.
+
+### Testing
+
+```bash
+pnpm test        # unit tests (Vitest)
+pnpm test:e2e    # Playwright smoke test
+```
+
+The smoke test builds and starts the production server and mocks Gemini. Run `pnpm exec playwright install chromium` once first.
+
+### Dependency Updates and CI
+
+Dependabot (weekly, grouped) and Snyk open dependency PRs. `react`, `react-dom` and their `@types` packages move together, and `react`/`react-dom` are pinned to the same exact version; `scripts/check-react-versions.mjs` fails CI on a mismatch.
+
+CI runs two jobs: `ci` (format, lint, type-check, React version check, unit tests, build) and `smoke` (Docker image plus Playwright). Patch and minor bot PRs auto-merge once both pass; major bumps get the `needs-review` label.
 
 ## 📋 How It Works
 
@@ -179,19 +227,20 @@ This project showcases **production-grade AI monitoring** using Langfuse:
 
 1. Sign up for free at [cloud.langfuse.com](https://cloud.langfuse.com)
 2. Get your API keys from the dashboard
-3. Add them to your Doppler project and config
+3. Add them as `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` in Doppler or your `.env`
 4. View traces in real-time as you use the app
 
 ## 🔒 Security
 
 - ✅ **Backend Proxy Pattern**: All AI requests go through a secure server
 - ✅ **Zero Client Exposure**: API keys never touch the browser
-- ✅ **CORS Protection**: Only configured origins can access the API
+- ✅ **Single Origin**: The server serves the frontend and API together, so no CORS configuration is needed
 - ✅ **Rate Limiting**: 30 requests/minute per IP
+- ✅ **Local by Default**: Docker binds to `127.0.0.1` unless you set `BIND_ADDRESS`
 
 ## 🐛 Troubleshooting
 
-**"Failed to fetch" error**: Ensure backend is running (`pnpm run dev:server`) and check `http://localhost:3001/health` returns `{"status":"ok"}`
+**"Failed to fetch" error**: Ensure the backend is running (`pnpm dev`, or the container via `docker compose ps`) and check `http://localhost:3001/health` (dev) or `http://localhost:8080/health` (production/Docker) returns `{"status":"ok"}`
 
 **"Invalid API key" error**: Get a valid key from [Google AI Studio](https://aistudio.google.com/app/apikey) and restart the backend server
 
