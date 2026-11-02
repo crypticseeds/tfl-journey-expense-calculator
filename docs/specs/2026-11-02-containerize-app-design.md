@@ -146,10 +146,15 @@ problem where this folder resolved to the wrong Doppler project.
      renders. This exercises pdf.js and the app's parsing without
      calling Gemini.
    - Same flow with `tests/e2e/fixtures/statement.png`, a PNG made once
-     from page 1 of the sample PDF and committed. This exercises
-     tesseract.js OCR. The OCR language data must load without
-     network access beyond what CI allows; if tesseract fetches it from
-     a CDN at runtime, the plan pins or vendors it.
+     from page 1 of the sample PDF and committed. Images go straight to
+     Gemini; no OCR runs for them.
+   - Same flow with `tests/e2e/fixtures/scanned-statement.pdf`, a
+     one-page PDF holding only that image (no text layer), so the app
+     takes its OCR path (pdf.js render plus tesseract.js). The test
+     asserts the Gemini request body contains text OCR extracted from
+     the page. Tesseract loads its worker, core and language data from
+     `cdn.jsdelivr.net` at version-pinned URLs; the cross-origin stub
+     lets that host through and stubs everything else.
 
 Single source of truth for versions: CI and the Snyk workflow use
 `pnpm/action-setup` without a `version` input (reads `packageManager`)

@@ -46,6 +46,20 @@ describe("Gemini endpoint", () => {
     expect(response.status).toBe(413);
   });
 
+  it("returns 400 for a POST without a JSON body", async () => {
+    const baseUrl = await startApp({ geminiApiKey: "test" });
+    const response = await fetch(`${baseUrl}/api/gemini/generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: "not json",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Missing required fields: model and contents",
+    });
+  });
+
   it("rejects models outside the allowlist", async () => {
     const fetchImpl = vi.fn();
     const baseUrl = await startApp({ geminiApiKey: "test", fetchImpl });
@@ -172,6 +186,27 @@ describe("static frontend", () => {
       staticDir: makeStaticDir(),
     });
     const response = await fetch(`${baseUrl}/some/deep/link`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('id="root"');
+  });
+
+  it("returns 404 for a missing asset", async () => {
+    const baseUrl = await startApp({
+      geminiApiKey: "test",
+      staticDir: makeStaticDir(),
+    });
+    const response = await fetch(`${baseUrl}/assets/missing.js`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it("serves index.html when only a non-final segment has a dot", async () => {
+    const baseUrl = await startApp({
+      geminiApiKey: "test",
+      staticDir: makeStaticDir(),
+    });
+    const response = await fetch(`${baseUrl}/a.b/c`);
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('id="root"');

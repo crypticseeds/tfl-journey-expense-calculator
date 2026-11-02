@@ -30,11 +30,19 @@ const test = base.extend<{ pageErrors: string[] }>({
       });
       page.on("pageerror", (error) => errors.push(error.message));
       // Third-party assets (fonts, CDN scripts) are stubbed so the run needs
-      // no outside network and cannot fail on someone else's outage.
+      // no outside network and cannot fail on someone else's outage. The one
+      // exception is cdn.jsdelivr.net: tesseract.js downloads its worker, core
+      // and language data from there (version-pinned URLs), and OCR cannot run
+      // without them.
       const appOrigin = new URL(baseURL!).origin;
       await page.route(
         (url) => url.origin !== appOrigin,
         (route) => {
+          if (
+            new URL(route.request().url()).origin === "https://cdn.jsdelivr.net"
+          ) {
+            return route.continue();
+          }
           const type = route.request().resourceType();
           return route.fulfill({
             status: 200,
@@ -60,21 +68,26 @@ const test = base.extend<{ pageErrors: string[] }>({
 
 // The PDF is split into several Gemini requests; return the journeys once and
 // an empty list for the rest, so the total is not counted per request.
-const mockGemini = async (page: import("@playwright/test").Page) => {
+const mockGemini = async (
+  page: import("@playwright/test").Page,
+  requestBodies: string[] = []
+) => {
   let calls = 0;
-  await page.route("**/api/gemini/generateContent", (route) =>
-    route.fulfill({
+  await page.route("**/api/gemini/generateContent", (route) => {
+    requestBodies.push(route.request().postData() ?? "");
+    return route.fulfill({
       contentType: "application/json",
       body: calls++ === 0 ? extraction : EMPTY_EXTRACTION,
-    })
-  );
+    });
+  });
 };
 
 const reportFor = async (
   page: import("@playwright/test").Page,
-  file: string
+  file: string,
+  requestBodies: string[] = []
 ) => {
-  await mockGemini(page);
+  await mockGemini(page, requestBodies);
   await page.goto("/");
   await page.getByLabel("Upload your TfL statements").setInputFiles(file);
 
@@ -90,7 +103,10 @@ const reportFor = async (
   }
 
   await page.getByRole("button", { name: "Calculate expenses" }).click();
-  await expect(page.locator("#step-3-summary")).toContainText(TOTAL);
+  // Generous timeout: the scanned-PDF case waits on in-browser OCR.
+  await expect(page.locator("#step-3-summary")).toContainText(TOTAL, {
+    timeout: 90_000,
+  });
 };
 
 test("home page renders without errors", async ({ page }) => {
@@ -106,4 +122,13 @@ test("pdf upload produces a report", async ({ page }) => {
 
 test("image upload produces a report", async ({ page }) => {
   await reportFor(page, fixture("statement.png"));
+});
+
+test("scanned pdf upload runs OCR and produces a report", async ({ page }) => {
+  test.setTimeout(120_000);
+  const requestBodies: string[] = [];
+  await reportFor(page, fixture("scanned-statement.pdf"), requestBodies);
+  // The PDF has no text layer, so this text can only come from tesseract.
+  expect(requestBodies).toHaveLength(1);
+  expect(requestBodies[0]).toContain("Canons Park to Knightsbridge");
 });

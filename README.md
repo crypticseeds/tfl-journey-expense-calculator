@@ -195,7 +195,7 @@ The smoke test builds and starts the production server and mocks Gemini. Run `pn
 
 Dependabot (weekly, grouped) and Snyk open dependency PRs. `react`, `react-dom` and their `@types` packages move together, and `react`/`react-dom` are pinned to the same exact version; `scripts/check-react-versions.mjs` fails CI on a mismatch.
 
-CI runs two jobs: `ci` (format, lint, type-check, React version check, unit tests, build) and `smoke` (Docker image plus Playwright). Patch and minor bot PRs auto-merge once both pass; major bumps get the `needs-review` label.
+CI runs two jobs: `ci` (format, lint, type-check, React version check, unit tests, build) and `smoke` (Docker image plus Playwright). Patch and minor bot PRs auto-merge once both pass; major bumps get the `needs-review` label. Merges made by auto-merge (with `GITHUB_TOKEN`) do not trigger push workflows on `main`, so the PR checks are the gate.
 
 ## 📋 How It Works
 

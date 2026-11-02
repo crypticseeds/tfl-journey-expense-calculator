@@ -98,7 +98,7 @@ export const createApp = ({
     express.json({ limit: "10mb" }),
     async (req, res) => {
       try {
-        const { model, contents, config } = req.body;
+        const { model, contents, config } = req.body ?? {};
 
         // Validate required fields
         if (!model || !contents) {
@@ -186,7 +186,9 @@ export const createApp = ({
       res.status(404).json({ error: "Not found" });
     });
     app.use(express.static(staticDir));
-    app.get(/^\/(?!health$).*/, (req, res) => {
+    app.get(/^\/.*/, (req, res) => {
+      // A missing file (last segment has an extension) is a 404, not the app.
+      if (path.extname(req.path)) return res.status(404).end();
       res.sendFile(path.join(path.resolve(staticDir), "index.html"));
     });
   }

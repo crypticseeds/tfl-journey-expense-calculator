@@ -50,6 +50,7 @@ jobs:
         env:
           ACTOR: ${{ github.event.pull_request.user.login }}
           DEPENDABOT_UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          DEPENDABOT_PREVIOUS_VERSION: ${{ steps.meta.outputs.previous-version }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           if [ "$ACTOR" = "dependabot[bot]" ]; then
@@ -58,6 +59,10 @@ jobs:
               version-update:semver-minor) type="minor" ;;
               version-update:semver-major) type="major" ;;
               *) type="unknown" ;;
+            esac
+            # A minor bump of a 0.x package is breaking under semver.
+            case "$DEPENDABOT_PREVIOUS_VERSION" in
+              0.*) [ "$type" = "minor" ] && type="major" ;;
             esac
           else
             type=$(node scripts/bump-type.mjs "$PR_TITLE")

@@ -1,7 +1,7 @@
 ARG NODE_VERSION=22.23.4
 
 FROM node:${NODE_VERSION}-slim AS base
-ENV HUSKY=0
+ENV HUSKY=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /app
 
@@ -22,10 +22,10 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 FROM node:${NODE_VERSION}-slim AS runtime
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
-COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node server ./server
-COPY --chown=node:node package.json ./
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY server ./server
+COPY package.json ./
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \

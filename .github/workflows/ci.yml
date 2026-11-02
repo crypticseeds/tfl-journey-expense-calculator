@@ -40,6 +40,10 @@ jobs:
       - name: Run type check
         run: pnpm type-check
 
+      - name: Check Dockerfile Node version matches .node-version
+        run: |
+          [ "$(sed -n 's/^ARG NODE_VERSION=//p' Dockerfile)" = "$(cat .node-version)" ]
+
       - name: Check react and react-dom versions match
         run: node scripts/check-react-versions.mjs
 
@@ -70,7 +74,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build image
-        run: docker build -t tfl-app:ci .
+        run: docker build --build-arg NODE_VERSION="$(cat .node-version)" -t tfl-app:ci .
 
       - name: Start container
         run: |
