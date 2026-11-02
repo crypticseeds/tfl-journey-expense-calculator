@@ -114,7 +114,7 @@ export const generateContent = async (
       throw new Error(
         `Cannot connect to backend server at ${API_BASE_URL}. ` +
           `Please ensure the backend proxy server is running. ` +
-          `Run 'pnpm run dev:server' or 'pnpm run dev:all' to start it.`
+          `Run 'pnpm dev' (or 'pnpm start' after 'pnpm build') to start it.`
       );
     }
     // Re-throw other errors as-is
