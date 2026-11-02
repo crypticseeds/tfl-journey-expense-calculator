@@ -1,0 +1,76 @@
+name: Auto-merge bot PRs
+
+# Auto-merge only completes once the required checks (ci, smoke) pass.
+# Branch protection and "Allow auto-merge" are repository settings
+# configured by the owner; without them `gh pr merge --auto` fails.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' ||
+      github.event.pull_request.user.login == 'snyk-bot'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+
+    steps:
+      # pull_request_target runs with write access: never check out PR code.
+      # The base commit is only needed for scripts/bump-type.mjs.
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Fetch Dependabot metadata
+        id: meta
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        uses: dependabot/fetch-metadata@v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Classify bump
+        id: bump
+        env:
+          ACTOR: ${{ github.event.pull_request.user.login }}
+          DEPENDABOT_UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ "$ACTOR" = "dependabot[bot]" ]; then
+            case "$DEPENDABOT_UPDATE_TYPE" in
+              version-update:semver-patch) type="patch" ;;
+              version-update:semver-minor) type="minor" ;;
+              version-update:semver-major) type="major" ;;
+              *) type="unknown" ;;
+            esac
+          else
+            type=$(node scripts/bump-type.mjs "$PR_TITLE")
+          fi
+          echo "Bump type: $type"
+          echo "type=$type" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge for patch and minor
+        if: steps.bump.outputs.type == 'patch' || steps.bump.outputs.type == 'minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Label for manual review
+        if: steps.bump.outputs.type != 'patch' && steps.bump.outputs.type != 'minor'
+        run: |
+          gh label create needs-review --color D93F0B --description "Bot PR needing manual review" --force
+          gh pr edit "$PR_URL" --add-label needs-review
