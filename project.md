@@ -42,7 +42,7 @@ This app eliminates that hassle entirely. It's not just another CRUD app—it's 
 - **Frontend**: React 19, TypeScript, Vite, PDF.js, Tesseract.js
 - **Backend**: Node.js, Express, Google Gemini AI (gemini-2.5-flash-lite)
 - **Observability**: Langfuse, OpenTelemetry
-- **DevOps**: pnpm, Doppler, Concurrently
+- **DevOps**: pnpm, Doppler, Docker Compose, GitHub Actions, Playwright, Dependabot
 
 ## Architecture
 
@@ -78,7 +78,7 @@ The React frontend handles file uploads, date selection, and result visualizatio
 The Express server acts as a secure proxy, protecting API keys and handling AI requests:
 
 - **Secure API proxy**: All Gemini API calls go through the backend, ensuring zero client-side API key exposure
-- **CORS protection**: Only configured origins can access the API
+- **Single origin**: The server also serves the built frontend, so the app and API share one origin and need no CORS
 - **Rate limiting**: 30 requests/minute per IP to prevent abuse
 - **Error handling**: Comprehensive error handling with proper HTTP status codes
 
@@ -95,8 +95,7 @@ The core intelligence lives in the Gemini service:
 
 ### Prerequisites
 
-- Node.js (v18+)
-- pnpm (or npm)
+- Node.js 22 (see `.node-version`) and pnpm (version pinned in `package.json`)
 - Google Gemini API key ([Get one free](https://aistudio.google.com/app/apikey))
 - Langfuse account (optional but recommended for observability)
 
@@ -117,29 +116,56 @@ pnpm install
 
 #### Environment Configuration
 
-Run `doppler setup`, then configure `GEMINI_API_KEY` and the optional Langfuse
-keys in the selected Doppler project and config.
+Set `GEMINI_API_KEY` (and the optional `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`) in Doppler (project `tfl`, config `dev`), or in a `.env` file copied from `.env.example` for Docker.
 
 #### Running the Application
 
 **Development Mode**:
 
 ```bash
-pnpm run dev:all
+pnpm dev
 ```
 
-The application will be available at:
-
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:3001`
-
-**Using Doppler for Production Secret Management**:
+This runs the API on `http://localhost:3001` and Vite on `http://localhost:3000`, with Vite proxying `/api` to the API. Without Doppler:
 
 ```bash
-doppler login
-doppler setup
-doppler run -- pnpm run dev:all
+GEMINI_API_KEY=your-key pnpm exec concurrently "node server/index.js" "vite"
 ```
+
+**Production without Docker**:
+
+```bash
+pnpm build && GEMINI_API_KEY=your-key pnpm start
+```
+
+Frontend and API are served from `http://localhost:8080` (`PORT` overrides).
+
+**Docker**:
+
+```bash
+doppler run --project tfl --config prd -- docker compose up -d --build
+# or: cp .env.example .env, fill GEMINI_API_KEY, then
+docker compose up -d --build
+```
+
+Open `http://localhost:8080`; stop with `docker compose down`. The container uses `restart: unless-stopped`.
+
+Compose also reads `TRUST_PROXY_HOPS` (default `0`; number of reverse proxies in front), `HOST_PORT` (default `8080`) and `BIND_ADDRESS` (default `127.0.0.1`, local only). Setting `BIND_ADDRESS=0.0.0.0` exposes the app to your network, where anyone who can reach it can spend your Gemini quota, so use it only on a trusted network or behind authentication.
+
+Langfuse tracing goes browser, then `/api/langfuse/traces`, where the server adds the keys before forwarding to Langfuse, so the secret never reaches the browser.
+
+#### Testing
+
+```bash
+pnpm test        # Vitest unit tests
+pnpm test:e2e    # Playwright smoke test (run `pnpm exec playwright install chromium` once)
+```
+
+The smoke test builds and starts the production server and mocks Gemini.
+
+#### CI and Dependency Updates
+
+Dependabot (weekly, grouped) and Snyk open dependency PRs. CI jobs are `ci` (format, lint, type-check, React version check, unit tests, build) and `smoke` (Docker image plus Playwright). Patch and minor bot PRs auto-merge once both pass; majors get the `needs-review` label. `react` and `react-dom` are pinned to the same exact version, and `scripts/check-react-versions.mjs` fails CI on a mismatch.
 
 ## Key Features Deep Dive
 
@@ -369,16 +395,15 @@ No database is used—all processing is stateless and in-memory. **No user data 
 - Thinking budget: 32,768 → 4,096 tokens (87.5% reduction)
 - Parallel processing: Reduced total API time despite more calls
 
-**Option 1: Vercel + Railway**
+### Deployment
 
-- Frontend: Deploy React app to Vercel
-- Backend: Deploy Express server to Railway
-- Environment variables: Configure in each platform's dashboard
+The app ships as a single container (see Docker above) that serves the frontend and API from one origin on port 8080. Put it behind a reverse proxy for HTTPS and set `TRUST_PROXY_HOPS` to the number of proxies in front of it.
 
 ### Security Checklist for Production
 
 - ✅ Use HTTPS for all connections
-- ✅ Set `FRONTEND_ORIGIN` to your actual domain
+- ✅ Keep `BIND_ADDRESS` at `127.0.0.1` unless the network is trusted or the app is behind authentication
+- ✅ Set `TRUST_PROXY_HOPS` to match your reverse proxies
 - ✅ Rotate API keys regularly
 - ✅ Enable Langfuse for monitoring
 - ✅ Set up alerts for API usage spikes

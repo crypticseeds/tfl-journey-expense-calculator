@@ -24,6 +24,10 @@ dist-ssr
 .env.*.backup
 *.env
 *.env.*
+!.env.example
+
+# Playwright output
+tests/e2e/.output/
 doppler.yaml
 doppler.toml
 

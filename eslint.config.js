@@ -9,11 +9,11 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/", "node_modules/**"],
+    ignores: ["dist/", "node_modules/**", "tests/e2e/.output/**"],
   },
   js.configs.recommended,
   {
-    files: ["**/*.{ts,tsx,js,jsx}"],
+    files: ["**/*.{ts,tsx,js,jsx,mjs}"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {

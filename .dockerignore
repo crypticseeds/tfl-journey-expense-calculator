@@ -1,0 +1,16 @@
+node_modules
+.git
+dist
+.env*
+docs
+sample
+images
+.agents
+.claude
+.playwright-mcp
+.husky
+coverage
+*.log
+**/*.test.js
+**/*.test.ts
+tests

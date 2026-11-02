@@ -1,10 +1,11 @@
 import express from "express";
-import cors from "cors";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createLruCache, createRateLimiter, fetchWithRetry } from "./utils.js";
 
-const PORT = process.env.PORT || 3001;
-const ALLOWED_GEMINI_MODELS = new Set(["gemini-3.1-flash-lite"]);
+const PRODUCTION = process.env.NODE_ENV === "production";
+const PORT = process.env.PORT || (PRODUCTION ? 8080 : 3001);
+const ALLOWED_GEMINI_MODELS = new Set(["gemini-3.5-flash-lite"]);
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const RATE_LIMIT_MAX = 30; // 30 requests per minute per IP
 
@@ -13,13 +14,13 @@ export const createApp = ({
   fetchImpl = fetch,
   retryOptions = {},
   responseCache = createLruCache(50),
+  staticDir,
 } = {}) => {
   const app = express();
   const langfusePublicKey = process.env.LANGFUSE_PUBLIC_KEY;
   const langfuseSecretKey = process.env.LANGFUSE_SECRET_KEY;
   const langfuseBaseUrl =
     process.env.LANGFUSE_BASE_URL || "https://cloud.langfuse.com";
-  const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
   const trustProxyHops = Number.parseInt(
     process.env.TRUST_PROXY_HOPS || "0",
     10
@@ -43,12 +44,6 @@ export const createApp = ({
     });
     next();
   });
-  app.use(
-    cors({
-      origin: frontendOrigin,
-      credentials: true,
-    })
-  );
 
   app.post(
     "/api/langfuse/traces",
@@ -103,7 +98,7 @@ export const createApp = ({
     express.json({ limit: "10mb" }),
     async (req, res) => {
       try {
-        const { model, contents, config } = req.body;
+        const { model, contents, config } = req.body ?? {};
 
         // Validate required fields
         if (!model || !contents) {
@@ -186,6 +181,18 @@ export const createApp = ({
     }
   );
 
+  if (staticDir) {
+    app.use("/api", (req, res) => {
+      res.status(404).json({ error: "Not found" });
+    });
+    app.use(express.static(staticDir));
+    app.get(/^\/.*/, (req, res) => {
+      // A missing file (last segment has an extension) is a 404, not the app.
+      if (path.extname(req.path)) return res.status(404).end();
+      res.sendFile(path.join(path.resolve(staticDir), "index.html"));
+    });
+  }
+
   return app;
 };
 
@@ -200,11 +207,12 @@ if (
     process.exit(1);
   }
 
-  createApp({ geminiApiKey }).listen(PORT, () => {
+  const staticDir = PRODUCTION
+    ? path.join(import.meta.dirname, "..", "dist")
+    : undefined;
+
+  createApp({ geminiApiKey, staticDir }).listen(PORT, () => {
     console.log(`🔒 Secure Gemini API proxy server running on port ${PORT}`);
-    console.log(
-      `   Frontend origin: ${process.env.FRONTEND_ORIGIN || "http://localhost:3000"}`
-    );
     console.log("   API key configured: ✅");
   });
 }

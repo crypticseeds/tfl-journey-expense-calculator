@@ -70,14 +70,11 @@ interface GenerateContentResponse {
   response: unknown;
 }
 
-// The configured base is the API root. A relative value uses the same origin.
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? "http://localhost:3001/api" : "/api");
+// The API is always served from the same origin (Vite proxy in dev).
+const API_BASE_URL = "/api";
 
-export const buildGenerateContentUrl = (
-  apiBaseUrl = "http://localhost:3001/api"
-): string => `${apiBaseUrl.replace(/\/$/, "")}/gemini/generateContent`;
+export const buildGenerateContentUrl = (apiBaseUrl = API_BASE_URL): string =>
+  `${apiBaseUrl.replace(/\/$/, "")}/gemini/generateContent`;
 
 /**
  * Generate content using Gemini API via secure backend proxy
@@ -117,7 +114,7 @@ export const generateContent = async (
       throw new Error(
         `Cannot connect to backend server at ${API_BASE_URL}. ` +
           `Please ensure the backend proxy server is running. ` +
-          `Run 'pnpm run dev:server' or 'pnpm run dev:all' to start it.`
+          `Run 'pnpm dev' (or 'pnpm start' after 'pnpm build') to start it.`
       );
     }
     // Re-throw other errors as-is
@@ -537,7 +534,7 @@ export const extractTravelDataFromFile = async (
       ) => { update: (data: unknown) => void; end: () => void };
     }) => {
       try {
-        const model = "gemini-3.1-flash-lite";
+        const model = "gemini-3.5-flash-lite";
         let contents;
         let rawTextForFallback = "";
 
@@ -599,11 +596,10 @@ export const extractTravelDataFromFile = async (
                 );
                 const viewport = page.getViewport({ scale: 2.0 });
                 const canvas = document.createElement("canvas");
-                const context = canvas.getContext("2d");
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
 
-                await page.render({ canvasContext: context, viewport }).promise;
+                await page.render({ canvas, viewport }).promise;
                 pageText = await ocr.recognizeText(canvas);
                 onProgressUpdate(`OCR on page ${pageNumber} complete.`);
               }
