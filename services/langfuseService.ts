@@ -1,20 +1,24 @@
 /**
- * Langfuse tracing service using OpenTelemetry-based v4 SDK
+ * Langfuse tracing service (browser), exporting via the server relay
  *
- * Note: @langfuse/otel is designed for Node.js. For browser environments,
- * we use the OpenTelemetry web SDK with a custom exporter that sends to Langfuse.
+ * Uses the OpenTelemetry sdk-trace TracerProvider with an OTLP exporter
+ * that posts to /api/langfuse/traces; the server adds the Langfuse keys.
  * Context propagation is handled by @langfuse/tracing's startActiveObservation.
  */
 
 import { startActiveObservation, propagateAttributes } from "@langfuse/tracing";
-import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
+import { context, trace } from "@opentelemetry/api";
+import {
+  BatchSpanProcessor,
+  StackContextManager,
+  TracerProvider,
+} from "@opentelemetry/sdk-trace";
 import {
   resourceFromAttributes,
   defaultResource,
 } from "@opentelemetry/resources";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 let isInitialized = false;
 let initializationPromise: Promise<void> | null = null;
@@ -43,19 +47,23 @@ const initializeLangfuse = async (): Promise<void> => {
         })
       );
 
-      const spanProcessor = new BatchSpanProcessor(exporter, {
+      const spanProcessor = new BatchSpanProcessor({
+        exporter,
         maxQueueSize: 2048,
         maxExportBatchSize: 512,
         scheduledDelayMillis: 5000,
         exportTimeoutMillis: 30000,
       });
 
-      const provider = new WebTracerProvider({
+      const provider = new TracerProvider({
         resource,
         spanProcessors: [spanProcessor],
       });
 
-      provider.register();
+      // sdk-trace 3 has no register(): set the global context manager and
+      // tracer provider that WebTracerProvider.register() used to set.
+      context.setGlobalContextManager(new StackContextManager().enable());
+      trace.setGlobalTracerProvider(provider);
       isInitialized = true;
 
       // Expose for manual flushing if needed
@@ -214,8 +222,8 @@ export const traceGeminiCall = async <T>(
 
         let output: unknown;
         let usageDetails:
-          | { input: number; output: number; total: number }
-          | undefined = undefined;
+          { input: number; output: number; total: number } | undefined =
+          undefined;
 
         if (typeof result === "object" && result !== null) {
           const resultObj = result as Record<string, unknown>;

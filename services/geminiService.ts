@@ -596,11 +596,10 @@ export const extractTravelDataFromFile = async (
                 );
                 const viewport = page.getViewport({ scale: 2.0 });
                 const canvas = document.createElement("canvas");
-                const context = canvas.getContext("2d");
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
 
-                await page.render({ canvasContext: context, viewport }).promise;
+                await page.render({ canvas, viewport }).promise;
                 pageText = await ocr.recognizeText(canvas);
                 onProgressUpdate(`OCR on page ${pageNumber} complete.`);
               }
